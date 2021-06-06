@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>4-bit computer</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+    <body style="font-family: 'Courier New', Courier, monospace;">
+        <h1>4-bit computer</h1>
+        <canvas id="display" style="border: 1px solid black" width="400" height="400"></canvas>
+        <br>
+        PROGRAM TAPE:<br>
+        <textarea id="tape" style="height: 1em; width: 400px;"></textarea>
+        <button id="button" onclick="start()">Start</button>
+        <br>
+        <p>RAM: <span id="RAM"></span></p>
+        <p>INPUT: <span id="INPUTS"></span></p>
+    </body>
+</html>
+
+<script>
+let running=false;
+let ctx = document.getElementById("display").getContext("2d");
+let program = [];
+let ram = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+let goto = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+let input = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+let pointer = 0;
+let keys = {
+    "ArrowRight": 1,
+    "ArrowDown": 2,
+    "ArrowLeft": 3,
+    "ArrowUp": 4,
+    " ": 5,
+    "Enter": 6
+}
+let caches = {
+    A: 0,
+    B: 0,
+    C: 0
+}
+
+function reset() {
+    ram = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    displayram = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    goto = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    input = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    pointer = 0;
+    caches = {
+        A: 0,
+        B: 0,
+        C: 0
+    }
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, 400, 400);
+    running = false;
+}
+
+function load(tape) {
+    tape = tape.replace(/[^0-9A-F]/g, "");
+    let result=[];
+    for (let i=0;i<tape.length-1;i+=2) {
+        result.push([parseInt(tape.substring(i,i+1),16),parseInt(tape.substring(i+1,i+2),16)]);
+    }
+    return result
+}
+
+function start() {
+    running = !running
+    if (running) {
+        program = load(document.getElementById("tape").value)
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, 400, 400);
+        document.getElementById("button").innerText="Stop";
+    } else {
+        reset()
+        document.getElementById("button").innerText="Start";
+    }
+}
+
+function set(num) {
+    if (typeof(num)=="string") {
+        num=parseInt(num,16)
+    }
+    if (typeof(num)=="object") {
+        num = 1*num[0]+2*num[1]+4*num[2]+8*num[3];
+    }
+    while (num<0 || num>15) {
+        if (num<0) {
+            num=16+num;
+        } else if (num>15) {
+            num=16-num;
+        }
+    }
+    return num
+}
+
+function bit(num) {
+    let result=[];
+    let c = set(num);
+    for (i=8;i>0.5;i/=2) {
+        if (c>=i) {
+            result.push(1);
+            c-=i
+        } else {
+            result.push(0);
+        }
+    }
+    return result.reverse()
+}
+
+function not(byte) {
+    for (i in byte) {
+        byte[i] = Math.abs(byte[i]-1);
+    }
+    return byte
+}
+
+function and(byte1,byte2) {
+    for (i in byte1) {
+        byte1[i] = Number(byte1[i] && byte2[i]);
+    }
+    return byte1
+}
+
+function or(byte1,byte2) {
+    for (i in byte1) {
+        byte1[i] = Number(byte1[i] || byte2[i]);
+    }
+    return byte1
+}
+
+function xor(byte1,byte2) {
+    for (i in byte1) {
+        byte1[i] = Number(( byte1[i] && !byte2[i] ) || ( !byte1[i] && byte2[i] ));
+    }
+    return byte1
+}
+
+function shift(byte,amount,roll) {
+    if (roll) {
+        if (amount<0) {
+            byte.push(byte.shift());
+        } else if (amount>0) {
+            byte.unshift(byte.pop());
+        }
+    } else {
+        if (amount<0) {
+            byte.push(0);
+        } else if (amount>0) {
+            byte.unshift(0);
+        }
+    }
+    return byte
+}
+
+function format(memory) {
+    let result = "";
+    for (value of memory) {
+        result+=Number(value).toString(16).toUpperCase()+" ";
+    }
+    return result
+}
+
+document.addEventListener("keydown",(e) => {
+    if (e.key in keys) {
+        input[0] = keys[e.key];
+    }
+});
+
+function tick() {
+    if (running) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(400-10,0,10,10);
+
+        input[1] = Math.floor(Math.random()*2);
+        input[2] = Math.floor(Math.random()*16);
+        let instruction = program[pointer];
+        let cmd = instruction[0];
+        let sub = instruction[1];
+
+        document.getElementById("RAM").innerText=format(ram);
+        document.getElementById("INPUTS").innerText=format(input);
+
+
+        switch (cmd) {
+            case 13:
+                switch (sub) {
+                    case 0:
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(caches.A*25,caches.B*25,25,25);
+                        break
+                    case 1:
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(caches.A*25,caches.B*25,25,25);
+                        break
+                    case 2:
+                        ctx.fillStyle = '#888888';
+                        ctx.fillRect(caches.A*25,caches.B*25,25,25);
+                        break
+                    case 3:
+                        ctx.fillStyle = '#000000';
+                        ctx.fillRect(0,0,400,400);
+                        break
+                    case 4:
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0,0,400,400);
+                        break
+                    case 5:
+                        ctx.fillStyle = '#888888';
+                        ctx.fillRect(0,0,400,400);
+                        break
+                    case 6:
+                        let rgba = ctx.getImageData(caches.A, caches.B, 1, 1).data; 
+                        if (rgba[0]==0) {
+                            caches.A=0;
+                        } else if (rgba[0]==255) {
+                            caches.A=15;
+                        } else {
+                            caches.A=8;
+                        }
+                        break
+                    }
+                break
+            case 0:
+                caches.A = ram[sub];
+                break
+            case 1:
+                caches.B = ram[sub];
+                break
+            case 2:
+                caches.C = ram[sub];
+                break
+            case 3:
+                ram[sub] = caches.C;
+                break
+            case 4:
+                caches.A = set(sub);
+                break
+            case 5:
+                caches.B = set(sub);
+                break
+            case 6:
+                caches.C = set(sub);
+                break
+            case 7:
+                let out = 0;
+                switch (sub) {
+                    case 0:
+                        out=set(caches.A+caches.B);
+                        break
+                    case 1:
+                        out=set(caches.A-caches.B);
+                        break
+                    case 2:
+                        out=set(not(bit(caches.A+1)));
+                        break
+                    case 3:
+                        out=set(not(bit(caches.B+1)));
+                        break
+                    case 4:
+                        out=set(shift(bit(caches.A),-caches.B,false));
+                        break
+                    case 5:
+                        out=set(shift(bit(caches.A),caches.B,false));
+                        break
+                    case 6:
+                        out=set(shift(bit(caches.A),-caches.B,true));
+                        break
+                    case 7:
+                        out=set(shift(bit(caches.A),caches.B,true));
+                        break
+                    case 8:
+                        out=set(and(bit(caches.A),bit(caches.B)));
+                        break
+                    case 9:
+                        out=set(or(bit(caches.A),bit(caches.B)));
+                        break
+                    case 10:
+                        out=set(xor(bit(caches.A),bit(caches.B)));
+                        break
+                    case 11:
+                        out=set(not(and(bit(caches.A),bit(caches.B))));
+                        break
+                    case 12:
+                        out=set(not(or(bit(caches.A),bit(caches.B))));
+                        break
+                    case 13:
+                        out=set(not(xor(bit(caches.A),bit(caches.B))));
+                        break
+                    case 14:
+                        out=caches.A;
+                        break
+                    case 15:
+                        out=caches.B;
+                        break
+
+                }
+                caches.C=out;
+                break
+            case 8:
+                if (sub==0) {
+                    pointer+=caches.C-8;
+                } else {
+                    pointer+=sub-8;
+                }
+                break
+            case 9:
+                goto[sub] = pointer;
+                break
+            case 10:
+                pointer = goto[sub];
+                break
+            case 11:
+                switch (sub) {
+                    case 0:
+                        if (caches.A==caches.B) {pointer+=1}
+                        break
+                    case 1:
+                        if (caches.A!=caches.B) {pointer+=1}
+                        break
+                    case 2:
+                        if (caches.A<caches.B) {pointer+=1}
+                        break
+                    case 3:
+                        if (caches.A>caches.B) {pointer+=1}
+                        break
+                    case 4:
+                        if (caches.A<=caches.B) {pointer+=1}
+                        break
+                    case 5:
+                        if (caches.A>=caches.B) {pointer+=1}
+                        break
+                    case 6:
+                        if (caches.A==0) {pointer+=1}
+                        break
+                    case 7:
+                        if (caches.B==0) {pointer+=1}
+                        break
+                    case 8:
+                        if (caches.C==0) {pointer+=1}
+                        break
+                    case 9:
+                        if (caches.A!=0) {pointer+=1}
+                        break
+                    case 10:
+                        if (caches.B!=0) {pointer+=1}
+                        break
+                    case 11:
+                        if (caches.C!=0) {pointer+=1}
+                        break
+                }
+                break       
+            case 12:
+                caches.A = input[sub];
+                input[sub] = 0;
+                break  
+        }
+        pointer+=1;
+        if (pointer>=program.length) {
+            reset()
+        } else if (pointer<0) {
+            pointer=0;
+        }
+        ctx.fillStyle = '#888888';
+        ctx.fillRect(400-10,0,10,10);
+    }
+}
+
+setInterval(tick,1);
+
+</script>
